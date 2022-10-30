@@ -1,0 +1,7 @@
+#Archivos en /bin
+*.out
+*.db
+
+#Archivos en /obj
+*.obj
+*.o
