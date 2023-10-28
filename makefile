@@ -1,19 +1,18 @@
 CC=gcc
 CFLAGS= -g -Wall -pedantic -Werror -Wextra -Wconversion -std=gnu11
 
-all: clean bdd sockets server
+all: clean bin/server clientes
 
-server:
-	$(CC) $(CFLAGS) ./src/server.c ./obj/bdd.obj ./obj/sockets.obj -o ./bin/server.out -lrt -lsqlite3
+bin/server: obj/dependencias.o obj/baseDatos.o
+	$(CC) $(CFLAGS) ./src/server.c obj/dependencias.o obj/baseDatos.o -o ./bin/server.out -lrt -lsqlite3
 
-bdd:
-	$(CC) $(CFLAGS) -c ./src/bdd.c  -o ./obj/bdd.obj -lrt -lsqlite3
+obj/dependencias.o:
+	$(CC) $(CFLAGS) -c ./src/dependencias.c -o obj/dependencias.o -lsqlite3
 
-sockets:
-	$(CC) $(CFLAGS) -c ./src/sockets.c  -o ./obj/sockets.obj -lrt
+obj/baseDatos.o: obj/dependencias.o
+	$(CC) $(CFLAGS) -c ./src/baseDatos.c -o obj/baseDatos.o -lsqlite3
 
 clientes: obj/cliente-db.o cliente_continuo cliente_query cliente_descarga
-
 
 obj/cliente-db.o:
 	$(CC) $(CFLAGS) -c ./src/cliente-db.c -o obj/cliente-db.o
