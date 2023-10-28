@@ -1,6 +1,7 @@
 #include "../inc/clients.h"
 
 #define QUERY_CONTINUO "SELECT SQLITE_VERSION();"
+#define INTERVALO 10
 
 int main(int argc, char const *argv[]){
     if (argc != 3)	{
@@ -51,6 +52,6 @@ int main(int argc, char const *argv[]){
 	printf("Conexion Exitosa\n");
 
     // Spammeo la query que defina arriba
-	sendQuery(sockfd, QUERY_CONTINUO, 10, 1);
+	sendQuery(sockfd, QUERY_CONTINUO, INTERVALO, 1);
 	return 0;
 }

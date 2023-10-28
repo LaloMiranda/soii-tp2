@@ -26,6 +26,10 @@ cliente_query:
 cliente_descarga:
 	$(CC) $(CFLAGS) ./src/cliente_descarga.c obj/cliente-db.o -o ./bin/cliente_descarga.out -lrt
 
+dependencies:
+	sudo apt update
+	sudo apt install libsqlite3-dev -y
+
 clean:
 	rm -f ./bin/*
 	rm -f ./obj/*
