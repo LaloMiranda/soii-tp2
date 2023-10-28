@@ -4,16 +4,16 @@
  * @brief Abro las conexiones de la DB con maximo 5
  * @param db 
  */
-void abrirConexionesDB(BasesDatos *db){
+void abrirConexionesDB(BaseDeDatos *db){
   for (int i = 0; i < 5; i++){
-    int rc = sqlite3_open("./bin/AnimeList.db", &db->arreglo[i]);
+    int rc = sqlite3_open("./bin/Pelis.db", &db->conexiones[i]);
     if (rc != SQLITE_OK){
-      fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db->arreglo[i]));
-      sqlite3_close(db->arreglo[i]);
+      fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db->conexiones[i]));
+      sqlite3_close(db->conexiones[i]);
       exit(EXIT_FAILURE);
     }
 
-    sqlite3_busy_timeout(db->arreglo[i], 1000);
+    sqlite3_busy_timeout(db->conexiones[i], 1000);
   }
   fprintf(stdout, "[SERVER] Abri las conexiones a la DB\n");
   db->indice = 0;
@@ -27,27 +27,25 @@ void crearBaseDatos(void){
   sqlite3 *db;
   char *err_msg = 0;
 
-  int rc = sqlite3_open("./bin/AnimeList.db", &db);
+  int rc = sqlite3_open("./bin/Pelis.db", &db);
   if (rc != SQLITE_OK){
     fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     exit(EXIT_FAILURE);
   }
 
-  char *sql = "DROP TABLE IF EXISTS Animes;"
-              "CREATE TABLE Animes(Id INTEGER PRIMARY KEY, Name TEXT, Date_Release INT ,Caps INT);"
-              "INSERT INTO Animes VALUES(1, 'Fullmetal Alchemist', 2009, 64);"
-              "INSERT INTO Animes VALUES(2, 'Shingeki no Kyojin', 2013, 60);"
-              "INSERT INTO Animes VALUES(3, 'Hunter x Hunter', 2011, 126);"
-              "INSERT INTO Animes VALUES(4, 'One Piece', 1999, 1013);"
-              "INSERT INTO Animes VALUES(5, 'Dragon Ball', 1986, 600);"
-              "INSERT INTO Animes VALUES(6, 'Sailor Moon', 1992, 46);"
-              "INSERT INTO Animes VALUES(7, 'Naruto', 2002, 218);"
-              "INSERT INTO Animes VALUES(8, 'Slam Dunk', 1993, 101);"
-              "INSERT INTO Animes VALUES(9, 'Jujutsu Kaisen', 2020, 24);"
-              "INSERT INTO Animes VALUES(10, 'Death Note', 2006, 37);"
-              "INSERT INTO Animes VALUES(11, 'Yū Yū Hakusho', 1992, 112);"
-              "INSERT INTO Animes VALUES(12, 'Himouto! Umaru-chan', 2013, 24);";
+  char *sql = "DROP TABLE IF EXISTS Pelis;"
+              "CREATE TABLE Pelis(Id INTEGER PRIMARY KEY, Name TEXT, Date_Release INT ,Lenght INT);"
+              "INSERT INTO Pelis VALUES(1, 'The Shawshank Redemption',  1994, 142);"
+              "INSERT INTO Pelis VALUES(2, 'The Godfather',             1972, 175);"
+              "INSERT INTO Pelis VALUES(3, 'The Dark Knight',           2008, 152);"
+              "INSERT INTO Pelis VALUES(4, 'The Godfather 2',           1974, 202);"
+              "INSERT INTO Pelis VALUES(5, 'Angry Men',                 1957, 96);"
+              "INSERT INTO Pelis VALUES(6, 'Schlinders list',           1993, 195);"
+              "INSERT INTO Pelis VALUES(7, 'The Lord of The Rings 2',   2003, 201);"
+              "INSERT INTO Pelis VALUES(8, 'Pulp Fiction',              1994, 154);"
+              "INSERT INTO Pelis VALUES(9, 'The Lord of The Rings 1',   2001, 178);"
+              "INSERT INTO Pelis VALUES(10, 'Forrest Gump',             1994, 142);";
   char *sq2 = "DROP TABLE IF EXISTS Log;"
               "CREATE TABLE Log(PID TEXT, PROTOCOLO TEXT, CMD TEXT, TIME TEXT);";
 
@@ -78,7 +76,7 @@ void crearBaseDatos(void){
  * @param socketCli 
  */
 void sendBaseDatos(int socketCli){
-  FILE *fp = fopen("./bin/AnimeList.db", "rb");
+  FILE *fp = fopen("./bin/Pelis.db", "rb");
   if (fp == NULL){
     perror("Error al abrir el archivo de la DB para enviarlo a cliente en sendBaseDatos()\n");
     exit(EXIT_FAILURE);
@@ -111,21 +109,20 @@ void sendBaseDatos(int socketCli){
  * @param query Pedido del cliente
  * @param db Base de datos
  * @param protocolo 1: IPv4 - 2: IPv6 - 3: UNIX 
- * @param semid ID del semaforo
+ * @param semaforo ID del semaforo
  * @return char* 
  */
-char *getQueryBaseDatos(char *query, BasesDatos *db, int protocolo, int semid){
+char *getQueryBaseDatos(char *query, BaseDeDatos *db, int protocolo, int semaforo){
   char *err_msg = 0;
   int rc;
-  
 
-  decreSem(semid);
+  decreSem(semaforo);
   int i = obtenerIndice(db);
-  increSem(semid);
+  increSem(semaforo);
 
   char *queryLog;
   queryLog = logearClienteBaseDatos(query, protocolo);
-  rc = sqlite3_exec(db->arreglo[i], queryLog, 0, 0, &err_msg);
+  rc = sqlite3_exec(db->conexiones[i], queryLog, 0, 0, &err_msg);
 
   char aux[50];
   if (rc != SQLITE_OK){
@@ -135,7 +132,7 @@ char *getQueryBaseDatos(char *query, BasesDatos *db, int protocolo, int semid){
       sqlite3_free(err_msg);
   }
   if (protocolo != 3){
-    rc = sqlite3_exec(db->arreglo[i], query, callback, 0, &err_msg);
+    rc = sqlite3_exec(db->conexiones[i], query, callback, 0, &err_msg);
     if (rc != SQLITE_OK){
       memset(aux, 0, sizeof(aux));
       //fprintf(stderr, "Failed to select data\n");
@@ -144,6 +141,7 @@ char *getQueryBaseDatos(char *query, BasesDatos *db, int protocolo, int semid){
       return strdup(aux);
     }
   }
+
 
   return result;
 }
@@ -156,6 +154,8 @@ char *getQueryBaseDatos(char *query, BasesDatos *db, int protocolo, int semid){
  * @return char* 
  */
 char *logearClienteBaseDatos(char *command, int protocolo){
+  char *protocolos[3] = {"IPv4", "IPv6", "UNIX"};
+
   time_t t;
   struct tm *tm;
   t = time(NULL);
@@ -165,17 +165,7 @@ char *logearClienteBaseDatos(char *command, int protocolo){
   strftime(fyh, BUF_SIZE, "%d/%m/%Y - %H:%M:%S", tm);
 
   char *aux = malloc(sizeof(char) * BUF_SIZE);
-  char* prot;
-  if (protocolo == 1){
-    prot = "IPv4";
-  }
-  else if (protocolo == 2){
-    prot = "IPv6";
-  }
-  else {
-    prot = "UNIX";
-  }
-  sprintf(aux, "INSERT INTO LOG VALUES(\"%d\",\"%s\",\"%s\",\"%s\");", getpid(), prot, command, fyh);
+  sprintf(aux, "INSERT INTO LOG VALUES(\"%d\",\"%s\",\"%s\",\"%s\");", getpid(), protocolos[protocolo], command, fyh);
   return aux;
 }
 
@@ -185,7 +175,7 @@ char *logearClienteBaseDatos(char *command, int protocolo){
  * @param db 
  * @return int 
  */
-int obtenerIndice(BasesDatos *db){
+int obtenerIndice(BaseDeDatos *db){
   int ind = db->indice;
   db->indice++;
   db->indice %= 5;

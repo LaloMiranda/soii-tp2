@@ -1,6 +1,76 @@
 #include "../inc/dependencias.h"
 #include "../inc/baseDatos.h"
 
+// FUNCIONES PARA LA INICIALIZACION DEL SERVIDOR
+
+/**
+ * Funcion Para la creacion de la memora compartida por la BDD
+*/
+BaseDeDatos *crearMemComp(){
+  BaseDeDatos *reg;
+
+  int mem_comp = shmget(ftok("./memComp", 'S'), sizeof(reg), (IPC_CREAT | 0660));
+  if (mem_comp < 0){
+    perror("[SERVER] Error al crear mem_omp\n");
+    exit(EXIT_FAILURE);
+  }
+  regIntGlob(mem_comp, 3);
+  
+	reg = shmat(mem_comp, 0, 0);
+  if (reg == (void *)-1){
+    perror("[SERVER] Error al asignar memoria\n");
+    exit(EXIT_FAILURE);
+  }
+  else{
+    printf("[SERVER] Se creo memoria compartida\n");
+  }
+  return reg;
+}
+
+void crearSockets(uint16_t puerto1, uint16_t puerto2, char *path, BaseDeDatos *db, int semaforo){
+	int pid[3];
+  
+	// PROCESO IPv4
+	pid[0] = fork();
+  regIntGlob(pid[0], 0);
+  if (pid[0] < 0){
+    perror("Error al crear el proceso para IPv4\n");
+    exit(EXIT_FAILURE);
+  }
+  else if (pid[0] == 0){
+    serverIPv4forks(puerto1, db, semaforo);
+    exit(EXIT_FAILURE);
+  }
+
+	// PROCESO IPv6
+  pid[1] = fork();
+  regIntGlob(pid[1], 1);
+  if (pid[1] < 0){
+
+    perror("Error al crear el proceso para IPv6\n");
+    exit(EXIT_FAILURE);
+  }
+  else if (pid[1] == 0){
+    serverIPv6forks(puerto2, db, semaforo);
+    exit(EXIT_FAILURE);
+  }
+
+	// PROCESO UNIX
+  pid[2] = fork();
+  regIntGlob(pid[2], 2);
+  if (pid[2] < 0){
+    printf("Error al crear el proceso para UNIX");
+    exit(EXIT_FAILURE);
+  }
+  else if (pid[2] == 0){
+    configSocketUnix(path, db, semaforo);
+    exit(EXIT_FAILURE);
+  }
+
+	// SENIAL PARA CIERRE
+  signal(SIGINT, cerrarServer);
+}
+
 // FUNCIONES PARA EL CIERRE DE LA APP
 
 /**
@@ -45,13 +115,13 @@ void borrarMemcomp(int shmid){
 /**
  * @brief Configuracion del semaforo
  * 
- * @param semid 
+ * @param semaforo 
  * @param num 
  */
-void configSemaforo(int semid, int num){
+void configSemaforo(int semaforo, int num){
 	union semun u;
 	u.val = num;
-	if (semctl(semid, 0, SETVAL, u) < 0){
+	if (semctl(semaforo, 0, SETVAL, u) < 0){
 		perror("[Server] Error al configurar el semafoto\n");
 		exit(EXIT_FAILURE);
 	}
@@ -66,25 +136,24 @@ void configSemaforo(int semid, int num){
  */
 int crearSemaforo(){
 	key_t key = ftok("./sem", 'S');
-	int semid;
-	if ((semid = semget(key, 1, IPC_CREAT | 0660)) == -1){
+	int semaforo;
+	if ((semaforo = semget(key, 1, IPC_CREAT | 0660)) == -1){
 		perror("[Server] Error al crear el semafoto\n");
 		exit(EXIT_FAILURE);
 	}
 
 	fprintf(stdout, "[SERVER] Semaforo creado\n");
-	return semid;
+	return semaforo;
 }
 
 /**
  * @brief borrar el semaforooo
  * 
- * @param semid 
+ * @param semaforo 
  */
 
-void borrarSemaforo(int semid){
-	if (semctl(semid, 0, IPC_RMID, 0) < 0)
-	{
+void borrarSemaforo(int semaforo){
+	if (semctl(semaforo, 0, IPC_RMID, 0) < 0){
 		perror("[Server] Error al crear el semafoto\n");
 		exit(EXIT_FAILURE);
 	}
@@ -95,12 +164,12 @@ void borrarSemaforo(int semid){
 /**
  * @brief Decrementar el semaforo 1 Wait
  * 
- * @param semid 
+ * @param semaforo 
  */
-void decreSem(int semid){
+void decreSem(int semaforo){
 	struct sembuf p = {0, -1, SEM_UNDO}; // semwait
-	if (semop(semid, &p, 1) < 0){
-		perror("[SERVER-IPv4] Error al decrementar el Semaforo\n");
+	if (semop(semaforo, &p, 1) < 0){
+		perror("[SERVER] Error al decrementar el Semaforo\n");
 		exit(EXIT_FAILURE);
 	}
 }
@@ -108,15 +177,17 @@ void decreSem(int semid){
 /**
  * @brief Incrementar semaforo 1 SIGNAL
  * 
- * @param semid 
+ * @param semaforo 
  */
-void increSem(int semid){
+void increSem(int semaforo){
 	struct sembuf v = {0, +1, SEM_UNDO}; // semsignal
-	if (semop(semid, &v, 1) < 0){
-		perror("[SERVER-IPv4] Error al decrementar el Semaforo\n");
+	if (semop(semaforo, &v, 1) < 0){
+		perror("[IPv4] Error al decrementar el Semaforo\n");
 		exit(EXIT_FAILURE);
 	}
 }
+
+// FUNCIONES PARA LA CONFIGURACION Y GESTION DE SOCKETS
 
 /**
  * @brief Funcion que se encarga de la configuracion del socket y la asocia a una configuracion de red IPv4
@@ -133,7 +204,7 @@ int configSockerIPv4(uint16_t puerto){
 		perror("Error al crear el socket IPv4\n");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stdout, "[SERVER-IPv4]: Socket creado!\n");
+	fprintf(stdout, "[IPv4]: Socket creado!\n");
 
 	memset(&servAddr, 0, sizeof(servAddr));
 	servAddr.sin_family = AF_INET;          // Configuracion IPv4
@@ -141,17 +212,17 @@ int configSockerIPv4(uint16_t puerto){
 	servAddr.sin_port = htons(puerto);		  // Puerto de la conexion
 
 	if (bind(serverSocketIPv4, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0){
-		perror("[SERVER-IPv4-ERROR] ERROR: No fue posible asignar el socket\n");
+		perror("[IPv4-ERROR] ERROR: No fue posible asignar el socket\n");
 		close(serverSocketIPv4);
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stdout, "[SERVER-IPv4]: Socket asociado!\n");
+	fprintf(stdout, "[IPv4]: Socket asociado!\n");
 
 	if (listen(serverSocketIPv4, MAX_CLIENT) < 0){
-		perror("[SERVER-IPv4-ERROR] Error al poner el socket del sv en listen\n");
+		perror("[IPv4-ERROR] Error al poner el socket del sv en listen\n");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stdout, "[SERVER-IPv4]: Socket configurado!\n");
+	fprintf(stdout, "[IPv4]: Socket configurado!\n");
 	return serverSocketIPv4;
 }
 
@@ -171,7 +242,7 @@ int configSockerIPv6(uint16_t puerto){
 		perror("Error al crear el socket IPv6");
 		return EXIT_FAILURE;
 	}
-	fprintf(stdout, "[SERVER-IPv6]: Socket creado!\n");
+	fprintf(stdout, "[IPv6]: Socket creado!\n");
 
 	memset(&servAddr, 0, sizeof(servAddr));
 	servAddr.sin6_family = AF_INET6;      // Configuracion IPv6
@@ -179,17 +250,17 @@ int configSockerIPv6(uint16_t puerto){
 	servAddr.sin6_port = htons(puerto);   // Puerto de la conexion
 
 	if (bind(serverSocketIPv6, (struct sockaddr *)&servAddr, sizeof(servAddr)) < 0){
-		perror("[SERVER-IPv6-ERROR] ERROR: No fue posible asignar el socket\n");
+		perror("[IPv6-ERROR] ERROR: No fue posible asignar el socket\n");
 		close(serverSocketIPv6);
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stdout, "[SERVER-IPv6]: Socket asociado!\n");
+	fprintf(stdout, "[IPv6]: Socket asociado!\n");
 
 	if (listen(serverSocketIPv6, MAX_CLIENT) < 0){
-		perror("[SERVER-IPv6-ERROR] Error al poner el socket del sv en listen\n");
+		perror("[IPv6-ERROR] Error al poner el socket del sv en listen\n");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stdout, "[SERVER-IPv6]: Socket configurado!\n");
+	fprintf(stdout, "[IPv6]: Socket configurado!\n");
 
 	return serverSocketIPv6;
 }
@@ -201,7 +272,7 @@ int configSockerIPv6(uint16_t puerto){
  * @return int 
  */
 
-void configSocketUnix(char *path, BasesDatos *db, int semid){
+void configSocketUnix(char *path, BaseDeDatos *db, int semaforo){
 	int sockfd, newsockfd, servlen;
 	struct sockaddr_un cli_addr, serv_addr;
 	char buffer[BUF_SIZE];
@@ -211,7 +282,7 @@ void configSocketUnix(char *path, BasesDatos *db, int semid){
 		perror("Error al crear socket UNIX");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stdout, "[SERVER-UNIX]: Socket creado!\n");
+	fprintf(stdout, "[UNIX]: Socket creado!\n");
 
 	unlink(path);
 
@@ -224,32 +295,32 @@ void configSocketUnix(char *path, BasesDatos *db, int semid){
 		perror("ligadura");
 		exit(EXIT_FAILURE);
 	}
-	fprintf(stdout, "[SERVER-UNIX]: Socket asociado!\n");
+	fprintf(stdout, "[UNIX]: Socket asociado!\n");
 
 	if (listen(sockfd, MAX_CLIENT) < 0){
-		perror("[SERVER-UNIX-ERROR] Error al poner el socket en listen\n");
+		perror("[UNIX-ERROR] Error al poner el socket en listen\n");
 		exit(EXIT_FAILURE);
 	}
 	else
-	fprintf(stdout, "[SERVER-UNIX]: Socket configurado!\n");
+	fprintf(stdout, "[UNIX]: Socket configurado!\n");
 
 	while (1){
 		newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &client_len);
 		if (newsockfd == -1){
-			fprintf(stdout, "[PID: %d] [SERVER-UNIX-ERROR] Fallo al aceptar el cliente.\n", getpid());
+			fprintf(stdout, "[PID: %d] [UNIX-ERROR] Fallo al aceptar el cliente.\n", getpid());
 			exit(EXIT_FAILURE);
 		}
 
 		int ch_pid = fork();
-		if (ch_pid == -1){
-			fprintf(stdout, "[PID: %d] [SERVER-UNIX-ERROR] fallo al hacer el fork.\n", getpid());
+		if (ch_pid < 0){
+			fprintf(stdout, "[PID: %d] [UNIX-ERROR] fallo al hacer el fork.\n", getpid());
 
 			exit(EXIT_FAILURE);
 		}
 
 		if (ch_pid == 0){
 			close(sockfd);
-			getQueryBaseDatos("Obtuvo una copia de la base de datos", db, 3, semid);
+			getQueryBaseDatos("Obtuvo una copia de la base de datos", db, 3, semaforo);
 			while (1){
 				memset(buffer, '\0', BUF_SIZE);
 				sendBaseDatos(newsockfd);
@@ -270,7 +341,7 @@ void configSocketUnix(char *path, BasesDatos *db, int semid){
  * @param puerto 
  * @param datos 
  */
-void serverIPv4forks(uint16_t puerto, BasesDatos *db, int semid){
+void serverIPv4forks(uint16_t puerto, BaseDeDatos *db, int semaforo){
 	int serverSocketIPv4;
 	char buff_rx[BUF_SIZE]; /* buffer for reception  */ /* Para la direccion del client */
 	struct sockaddr_in clientAddr;
@@ -283,36 +354,35 @@ void serverIPv4forks(uint16_t puerto, BasesDatos *db, int semid){
 		int cl_socket_fd = accept(serverSocketIPv4, (struct sockaddr *)&clientAddr, &client_len);
 
 		if (cl_socket_fd == -1){
-			fprintf(stdout, "[PID: %d] [SERVER-IPv4-ERROR] Fallo al aceptar el cliente.\n", getpid());
+			fprintf(stdout, "[PID: %d] [IPv4-ERROR] Fallo al aceptar el cliente.\n", getpid());
 			exit(EXIT_FAILURE);
 		}
-		fprintf(stdout, "[PID: %d] [SERVER-IPv4] Acepto al cliente.\n", getpid());
+		fprintf(stdout, "[PID: %d] [IPv4] Acepto al cliente.\n", getpid());
 
 		int ch_pid = fork();
-		if (ch_pid == -1){
-			fprintf(stdout, "[PID: %d] [SERVER-IPv4-ERROR] fallo al hacer el fork.\n", getpid());
+		if (ch_pid < 0){
+			fprintf(stdout, "[PID: %d] [IPv4-ERROR] fallo al hacer el fork.\n", getpid());
 			exit(EXIT_FAILURE);
 		}
 
     // Proceso hijo dps del fork
-		if (ch_pid == 0)
-		{
+		if (ch_pid == 0){
 			close(serverSocketIPv4);
 			while (1){
 				char *result;
 				memset(buff_rx, 0, BUF_SIZE);
 				long rec = read(cl_socket_fd, buff_rx, (BUF_SIZE - 1));
 				if (rec == -1){
-					fprintf(stdout, "[PID: %d] [SERVER-IPv4-ERROR] Fallo al recibir el mensaje.\n", getppid());
+					fprintf(stdout, "[PID: %d] [IPv4-ERROR] Fallo al recibir el mensaje.\n", getppid());
 					exit(EXIT_FAILURE);
 				}
 
 				if (rec == 0){
-					fprintf(stdout, "[PID: %d] [SERVER-IPv4] Cliente con PID: %d se desconecto.\n", getppid(), getpid());
+					fprintf(stdout, "[PID: %d] [IPv4] Cliente con PID: %d se desconecto.\n", getppid(), getpid());
 					exit(EXIT_FAILURE);
 				}
 
-				result = getQueryBaseDatos(buff_rx, db, 1, semid);
+				result = getQueryBaseDatos(buff_rx, db, 0, semaforo);
 				if (send(cl_socket_fd, result, strlen(result), 0) < 0){
 					perror("Error al mandar mensaje\n");
 					exit(EXIT_FAILURE);
@@ -322,7 +392,7 @@ void serverIPv4forks(uint16_t puerto, BasesDatos *db, int semid){
 		}
 		else{
 			// Proceso padre
-			fprintf(stdout, "[PID: %d] [SERVER-IPv4] Nuevo cliente PID: %d.\n", getpid(), ch_pid);
+			fprintf(stdout, "[PID: %d] [IPv4] Nuevo cliente PID: %d.\n", getpid(), ch_pid);
 			close(cl_socket_fd);
 		}
 	}
@@ -335,7 +405,7 @@ void serverIPv4forks(uint16_t puerto, BasesDatos *db, int semid){
  * @param puerto 
  * @param datos 
  */
-void serverIPv6forks(uint16_t puerto, BasesDatos *db, int semid){
+void serverIPv6forks(uint16_t puerto, BaseDeDatos *db, int semaforo){
 	int serverSocketIPv6;
 	char buff_rx[BUF_SIZE];
 	struct sockaddr_in clientAddr;
@@ -346,13 +416,13 @@ void serverIPv6forks(uint16_t puerto, BasesDatos *db, int semid){
 	while (1){
 		int cl_socket_fd = accept(serverSocketIPv6, (struct sockaddr *)&clientAddr, &client_len);
 		if (cl_socket_fd == -1){
-			fprintf(stdout, "[PID: %d] [SERVER-IPv6-ERROR] Fallo al aceptar el cliente.\n", getpid());
+			fprintf(stdout, "[PID: %d] [IPv6-ERROR] Fallo al aceptar el cliente.\n", getpid());
 			exit(EXIT_FAILURE);
 		}
 
 		int ch_pid = fork();
-		if (ch_pid == -1){
-			fprintf(stdout, "[PID: %d] [SERVER-IPv6-ERROR] Fallor al crear el fork.\n", getpid());
+		if (ch_pid < 0){
+			fprintf(stdout, "[PID: %d] [IPv6-ERROR] Fallor al crear el fork.\n", getpid());
 
 			exit(EXIT_FAILURE);
 		}
@@ -365,16 +435,16 @@ void serverIPv6forks(uint16_t puerto, BasesDatos *db, int semid){
 				memset(buff_rx, 0, BUF_SIZE);
 				long rec = read(cl_socket_fd, buff_rx, (BUF_SIZE - 1));
 				if (rec == -1){
-					fprintf(stdout, "[PID: %d] [SERVER-IPv6-ERROR] Fallo al recibir el mensaje.\n", getpid());
+					fprintf(stdout, "[PID: %d] [IPv6-ERROR] Fallo al recibir el mensaje.\n", getpid());
 					exit(EXIT_FAILURE);
 				}
 
 				if (rec == 0){
-					fprintf(stdout, "[PID: %d] [SERVER-IPv6] Cliente con PID: %d se desconecto.\n", getppid(), getpid());
+					fprintf(stdout, "[PID: %d] [IPv6] Cliente con PID: %d se desconecto.\n", getppid(), getpid());
 					exit(EXIT_FAILURE);
 				}
 
-				result = getQueryBaseDatos(buff_rx, db, 2, semid);
+				result = getQueryBaseDatos(buff_rx, db, 1, semaforo);
 				if (strlen(result) == 0){
 					//printf("MANDE ESTO PORQUE ES CERO\n");
 					if (send(cl_socket_fd, " ", 1, 0) < 0)
@@ -390,7 +460,7 @@ void serverIPv6forks(uint16_t puerto, BasesDatos *db, int semid){
 		}
 		else{
 			// Proceso padre
-			fprintf(stdout, "[PID: %d] [SERVER-IPv6] Nuevo cliente PID: %d.\n", getpid(), ch_pid);
+			fprintf(stdout, "[PID: %d] [IPv6] Nuevo cliente PID: %d.\n", getpid(), ch_pid);
 			close(cl_socket_fd);
 		}
 	}

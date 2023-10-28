@@ -24,32 +24,36 @@
 #define MAX_CLIENT 1000
 
 typedef struct{
-	sqlite3 *arreglo[5];
+	sqlite3 *conexiones[5];
 	int indice;
 
-} BasesDatos;
+} BaseDeDatos;
 
 union semun{
 	int val;
-	struct semid_ds *buf;
+	struct semaforo_ds *buf;
 	unsigned short *array;
 };
 
 int valGlob[5];
 
+//Inicializacion del server
+BaseDeDatos *crearMemComp();
+void	crearSockets(uint16_t puerto1, uint16_t puerto2, char *path, BaseDeDatos *db, int semaforo);
+
 // Gestoin de semaforo
-void  configSemaforo(int semid, int num);
+void  configSemaforo(int semaforo, int num);
 int   crearSemaforo();
-void  borrarSemaforo(int semid);
-void  decreSem(int semid);
-void  increSem(int semid);
+void  borrarSemaforo(int semaforo);
+void  decreSem(int semaforo);
+void  increSem(int semaforo);
 
 // Configuracion de sockets
 int   configSockerIPv4(uint16_t puerto);
 int   configSockerIPv6(uint16_t puerto);
-void  configSocketUnix(char *path, BasesDatos *db, int semid);
-void  serverIPv4forks (uint16_t puerto, BasesDatos *db, int semid);
-void  serverIPv6forks (uint16_t puerto, BasesDatos *db, int semid);
+void  configSocketUnix(char *path, BaseDeDatos *db, int semaforo);
+void  serverIPv4forks (uint16_t puerto, BaseDeDatos *db, int semaforo);
+void  serverIPv6forks (uint16_t puerto, BaseDeDatos *db, int semaforo);
 
 // Cierre de la app
 void  borrarMemcomp(int shmid);
