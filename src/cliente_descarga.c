@@ -3,7 +3,7 @@
 int main(int argc, char const *argv[]){
     if (argc < 2){
 		printf("Formato de enrtada: %s <socket> <nombre_de_descarga>\n", argv[0]);
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 
     // Configuro la conexión
@@ -19,14 +19,14 @@ int main(int argc, char const *argv[]){
     int sockfd;
 	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0){
 		perror("Error al crear el socket UNIX");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	printf("Path del socket: %s\n", serv_addr.sun_path);
 
     // Establezco conexión
 	if (connect(sockfd, (struct sockaddr *)&serv_addr, (socklen_t)servlen) < 0){
 		perror("Error al establecer la conexión");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
     // Consigo el path donde voy a guardar la copia de la DB
@@ -38,7 +38,7 @@ int main(int argc, char const *argv[]){
 	fp = fopen(path, "ab");
 	if (fp == NULL){
 		perror("Error al abir el archivo donde se guardara la DB\n");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	// Traigo la info de la DB en baches de 256 bytes

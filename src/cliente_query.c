@@ -3,7 +3,7 @@
 int main(int argc, char const *argv[]){
     if (argc != 3)	{
         printf("Formato de enrtada: %s <server-ip> <portIPv4>\n", argv[0]);
-        exit(1);
+        exit(EXIT_FAILURE);
 	}
 
     // Obtengo puerto de conexión IPv4 como int
@@ -16,7 +16,7 @@ int main(int argc, char const *argv[]){
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sockfd == -1){
 		printf("Error al crear el socket IPv4 cliente_continuo\n");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	printf("Socket fd = %d\n", sockfd);
 
@@ -29,7 +29,7 @@ int main(int argc, char const *argv[]){
 	server = gethostbyname(argv[1]);
     if(server == NULL){
         perror("Error al obtener la información del host");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     // Configuro el tipo de conexión
@@ -45,7 +45,7 @@ int main(int argc, char const *argv[]){
     // Intento Conexion
 	if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0){
 		perror("Cliente continuo: Error de conexión");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	printf("Conexion Exitosa\n");
 
