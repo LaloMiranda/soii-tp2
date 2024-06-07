@@ -35,8 +35,6 @@ union semun{
 	unsigned short *array;
 };
 
-int valGlob[5];
-
 //Inicializacion del server
 BaseDeDatos *crearMemComp();
 void	crearSockets(uint16_t puerto1, uint16_t puerto2, char *path, BaseDeDatos *db, int semaforo);

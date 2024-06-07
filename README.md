@@ -22,7 +22,7 @@ El objetivo del presente trabajo práctico es que el estudiante sea capaz de dis
 
 - Cliente query: Realiza una query enviada por el usuario en la CLI.
 ```Shell
-./bin/cliente_continuo.out localhost <Puerto_IPv4> 
+./bin/cliente_query.out localhost <Puerto_IPv4> 
 ```
 
 ### Servidor

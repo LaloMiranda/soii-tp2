@@ -1,5 +1,7 @@
 #include "../inc/baseDatos.h"
 
+char result[BUF_SIZE];
+
 /**
  * @brief Abro las conexiones de la DB con maximo 5
  * @param db 
@@ -164,7 +166,7 @@ char *logearClienteBaseDatos(char *command, int protocolo){
   char fyh[BUF_SIZE];
   strftime(fyh, BUF_SIZE, "%d/%m/%Y - %H:%M:%S", tm);
 
-  char *aux = malloc(sizeof(char) * BUF_SIZE);
+  char *aux = malloc(sizeof(char) * (BUF_SIZE + 100));
   sprintf(aux, "INSERT INTO LOG VALUES(\"%d\",\"%s\",\"%s\",\"%s\");", getpid(), protocolos[protocolo], command, fyh);
   return aux;
 }

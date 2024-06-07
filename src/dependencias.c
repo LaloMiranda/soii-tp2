@@ -1,6 +1,8 @@
 #include "../inc/dependencias.h"
 #include "../inc/baseDatos.h"
 
+int valGlob[5];
+
 // FUNCIONES PARA LA INICIALIZACION DEL SERVIDOR
 
 /**

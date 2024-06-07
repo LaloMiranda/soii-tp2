@@ -17,5 +17,4 @@ char *logearClienteBaseDatos(char *command, int protocolo);
 int obtenerIndice(BaseDeDatos *db);  
 int callback(void *NotUsed, int cantColumnas, char **valCell, char **nameCol);
 
-char result[BUF_SIZE];
 #endif
